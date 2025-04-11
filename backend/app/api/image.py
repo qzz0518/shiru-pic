@@ -18,17 +18,24 @@ logger = logging.getLogger(__name__)
 bp = Blueprint('image', __name__, url_prefix='/api/image')
 
 # 允许的文件扩展名
-ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
+ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
 
 def allowed_file(filename):
-    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+    # 统一使用小写扩展名进行判断
+    if '.' not in filename:
+        return False
+    ext = filename.rsplit('.', 1)[1].lower()
+    # 兼容JPG和JPEG扩展名的大小写问题
+    if ext in ('jpg', 'jpeg'):
+        return True
+    return ext in ALLOWED_EXTENSIONS
 
 
 
 # 使用OpenAI分析图片内容
-def analyze_image_with_openai(image_url_or_path, api_key, is_url=False):
+def analyze_image_with_openai(image_url_or_path, api_key, is_url=False, image_data=None):
     try:
-        logger.info(f"开始分析图片: {'使用URL' if is_url else '使用本地文件'}")
+        logger.info(f"开始分析图片: {'使用URL' if is_url else '使用二进制数据' if image_data else '使用本地文件'}")
         
         # 创建OpenAI客户端
         from openai import OpenAI
@@ -39,12 +46,18 @@ def analyze_image_with_openai(image_url_or_path, api_key, is_url=False):
             # 使用URL直接调用API
             image_url = image_url_or_path
             logger.info(f"使用图片URL: {image_url[:50]}...")
+        elif image_data:
+            # 使用传入的二进制数据
+            logger.info("使用传入的图片数据")
+            image_data_base64 = base64.b64encode(image_data).decode('ascii')
+            # 使用通用的MIME类型
+            image_url = f"data:image/png;base64,{image_data_base64}"
         else:
             # 读取本地图片文件
             logger.info(f"读取本地图片: {image_url_or_path}")
             with open(image_url_or_path, "rb") as image_file:
                 image_data = base64.b64encode(image_file.read()).decode('ascii')
-                image_url = f"data:image/jpeg;base64,{image_data}"
+                image_url = f"data:image/png;base64,{image_data}"
         
         # 调用OpenAI视觉API分析图片
         response = client.responses.create(
@@ -200,8 +213,10 @@ def analyze_image(user):
             if not api_key:
                 return jsonify({'error': 'OpenAI API密钥未配置'}), 500
             
-            # 分析图片
-            analysis_result = analyze_image_with_openai(image_url, api_key, is_url=True)
+            # 分析图片 - 使用原始文件数据
+            # 重置文件指针并重新读取数据
+            file.seek(0)
+            analysis_result = analyze_image_with_openai(image_url, api_key, is_url=False, image_data=file_data)
             
             if 'error' in analysis_result:
                 return jsonify({'error': f'图片分析失败: {analysis_result["error"]}'}), 500
