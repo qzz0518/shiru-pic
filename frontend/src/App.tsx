@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import styled from 'styled-components'
 import { ConfigProvider } from 'antd'
 import zhCN from 'antd/lib/locale/zh_CN'
+import { Toaster } from 'react-hot-toast'
 
 // 导入页面组件
 import { HomePage, WordbookPage, SettingsPage, LandingPage, HistoryPage } from './pages'
@@ -70,6 +71,9 @@ function App() {
     <ConfigProvider locale={zhCN} theme={theme}>
       <AuthProvider>
         <AppContainer>
+          {/* Toast通知容器 */}
+          <Toaster />
+          
           <BrowserRouter>
             <Routes>
               <Route path="/" element={<LandingPage installPrompt={installPrompt} />} />

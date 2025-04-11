@@ -6,7 +6,6 @@ import {
   Typography, 
   Button, 
   Divider, 
-  message, 
   Card,
   Badge
 } from 'antd';
@@ -24,6 +23,7 @@ import IOSHeader from '../components/IOSHeader';
 import { motion } from 'framer-motion';
 import styled from 'styled-components';
 import { useAuth } from '../contexts/AuthContext';
+import toast from '../utils/toast';
 
 const { Title, Text } = Typography;
 
@@ -116,18 +116,30 @@ const SettingsPage: React.FC = () => {
   const handleLogout = async () => {
     try {
       setLoading(true);
-      // 清除Firebase会话
-      logout();
+      // 调用 AuthContext 的 logout 函数
+      await logout();
+      
+      // 手动清除所有缓存的令牌
+      try {
+        // 引入全局 API 实例中的缓存令牌 (cachedToken) 会被设置为 null
+        // 这一步使用事件模式实现
+        const clearedEvent = new CustomEvent('auth-token-cleared');
+        window.dispatchEvent(clearedEvent);
+      } catch (clearError) {
+        console.error('清除令牌缓存错误:', clearError);
+      }
+      
+      // 展示成功消息
+      toast.success('您已成功退出登录');
       
       // 确保退出后重定向到登录页面
+      // 增加延迟时间，确保数据库操作完成
       setTimeout(() => {
         window.location.href = '/';
-      }, 100);
-      
-      message.success('您已成功退出登录');
+      }, 300);
     } catch (error) {
       console.error('退出登录错误:', error);
-      message.error('退出登录时发生错误');
+      toast.error('退出登录时发生错误');
     } finally {
       setLoading(false);
     }

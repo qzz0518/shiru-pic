@@ -7,7 +7,6 @@ import {
   Typography, 
   List, 
   Spin, 
-  message,
   Tag,
   Modal
 } from 'antd';
@@ -26,6 +25,7 @@ import styled from 'styled-components';
 import { motion } from 'framer-motion';
 // 导入API服务
 import { imageAPI, ttsAPI, wordbookAPI } from '../services/api';
+import toast from '../utils/toast';
 
 const { Title, Text, Paragraph } = Typography;
 
@@ -265,10 +265,7 @@ const HomePage: React.FC = () => {
         setAnalysisResult(adaptedItem);
       } catch (error) {
         console.error('处理历史数据失败:', error);
-        message.error({
-          content: '处理历史数据失败',
-          style: { marginTop: '20vh' }
-        });
+        toast.error('处理历史数据失败');
       }
     }
   }, [location.state]);
@@ -289,12 +286,29 @@ const HomePage: React.FC = () => {
 
   // 处理文件上传
   const handleFileUpload = async (file: File) => {
+    // 验证文件类型
+    const validTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+    if (!validTypes.includes(file.type)) {
+      toast.error(`不支持的文件格式，请上传JPEG、PNG、GIF或WebP格式的图片`);
+      return;
+    }
+    
+    // 验证文件大小（限制5MB）
+    const maxSize = 5 * 1024 * 1024; // 5MB
+    if (file.size > maxSize) {
+      toast.error(`图片过大，请上传小于5MB的图片`);
+      return;
+    }
+    
     setLoading(true);
     setLoadingText('图片解析中...'); // 初始设置加载文字
     const formData = new FormData();
     formData.append('image', file);
 
     try {
+      // 显示处理中状态
+      setLoadingText('正在处理图片...');
+      
       const response = await imageAPI.analyzeImage(formData);
       console.log('图片分析结果:', response.data);
       
@@ -306,10 +320,36 @@ const HomePage: React.FC = () => {
       };
 
       setAnalysisResult(result);
-      message.success('图片分析成功');
-    } catch (error) {
+      toast.success('图片分析成功');
+    } catch (error: any) {
       console.error('图片分析失败:', error);
-      message.error('图片分析失败，请重试');
+      
+      // 尝试获取更详细的错误信息
+      let errorMsg = '图片分析失败';
+      
+      // 使用 API 拦截器添加的用户友好错误信息
+      if (error.userFriendlyMessage) {
+        errorMsg = error.userFriendlyMessage;
+      } else if (error.response?.data) {
+        // 直接从响应中提取错误信息的备用方案
+        const data = error.response.data;
+        if (data.error?.message) {
+          errorMsg = `错误: ${data.error.message}`;
+        } else if (typeof data.error === 'string') {
+          errorMsg = data.error;
+        } else if (data.message) {
+          errorMsg = data.message;
+        }
+      }
+      
+      // 增加对OpenAI错误的特殊处理
+      if (errorMsg.includes('not represent a valid image') || errorMsg.includes('supported image formats')) {
+        errorMsg = '图片格式错误，请上传JPEG、PNG、GIF或WebP格式的图片';
+      }
+      
+      toast.error(errorMsg, {
+        duration: 5000 // 显示时间增加为5秒
+      });
     } finally {
       setLoading(false);
     }
@@ -335,7 +375,7 @@ const HomePage: React.FC = () => {
       audio.play();
     } catch (error) {
       console.error('播放发音失败:', error);
-      message.error('播放发音失败');
+      toast.error('播放发音失败');
     }
   };
 
@@ -350,9 +390,8 @@ const HomePage: React.FC = () => {
       setAddingWordIds(prev => [...prev, wordId]);
       
       // 显示提示信息
-      message.info({
-        content: `「${word.word}」已在单词本中`,
-        duration: 1.5
+      toast.info(`「${word.word}」已在单词本中`, {
+        duration: 1500
       });
       
       // 1.5秒后移除ID，恢复按钮状态
@@ -387,9 +426,8 @@ const HomePage: React.FC = () => {
       // 立即移除ID，恢复按钮状态
       setAddingWordIds(prev => prev.filter(id => id !== wordId));
       
-      message.error({
-        content: '添加失败，请重试',
-        duration: 1.5
+      toast.error('添加失败，请重试', {
+        duration: 1500
       });
     }
   };
@@ -777,13 +815,7 @@ const HomePage: React.FC = () => {
               if (selectedWord) {
                 addToWordbook(selectedWord);
                 closeWordDetails();
-                message.success({
-                  content: '已添加到单词本',
-                  icon: <PlusOutlined style={{ color: '#52c41a' }} />,
-                  style: {
-                    marginTop: '20vh'
-                  }
-                });
+                toast.success('已添加到单词本');
               }
             }}
           >
