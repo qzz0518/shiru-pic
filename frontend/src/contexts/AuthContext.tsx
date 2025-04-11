@@ -1,8 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import axios from 'axios';
-
-// 头像缓存键
-const AVATAR_CACHE_KEY = 'cached_user_avatar_data';
+import db from '../utils/db'; // 引入Dexie数据库模块
 
 // 配置API基础URL
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5001';
@@ -36,7 +34,14 @@ async function fetchAndCacheAvatar(url: string): Promise<string | null> {
     // 转换Blob为Base64
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
-      reader.onloadend = () => resolve(reader.result as string);
+      reader.onloadend = () => {
+        const base64Data = reader.result as string;
+        // 将头像数据保存到Dexie数据库
+        db.cacheAvatar(base64Data).catch(err => 
+          console.error('将头像保存到Dexie失败:', err)
+        );
+        resolve(base64Data);
+      };
       reader.onerror = reject;
       reader.readAsDataURL(blob);
     });
@@ -67,38 +72,80 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     const checkAuthStatus = async () => {
       try {
-        // 从本地存储中获取token
-        const token = localStorage.getItem('auth_token');
-        if (token) {
+        // 从Dexie数据库中获取认证信息
+        const authData = await db.getAuthToken();
+        
+        if (authData && authData.token) {
           // 设置axios默认headers
-          axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+          axios.defaults.headers.common['Authorization'] = `Bearer ${authData.token}`;
           
-          // 调用API验证token
-          const response = await axios.get('/api/auth/verify');
-          const userData = response.data.user;
-          
-          // 检查是否有缓存的头像
-          const cachedAvatarData = localStorage.getItem(AVATAR_CACHE_KEY);
-          if (cachedAvatarData && userData) {
-            // 直接使用Base64数据替换URL
-            userData.photoURL = cachedAvatarData;
-          } else if (userData && userData.photoURL) {
-            // 如果没有缓存但有URL，尝试下载并缓存
-            fetchAndCacheAvatar(userData.photoURL).then(base64Data => {
-              if (base64Data) {
-                userData.photoURL = base64Data;
-                setUser({...userData});
-              }
-            }).catch(err => console.error('缓存头像失败:', err));
+          try {
+            // 调用API验证token
+            const response = await axios.get('/api/auth/verify');
+            const userData = response.data.user;
+            
+            // 检查是否有缓存的头像
+            const cachedAvatarData = await db.getCachedAvatar();
+            if (cachedAvatarData && userData) {
+              // 直接使用Base64数据替换URL
+              userData.photoURL = cachedAvatarData;
+            } else if (userData && userData.photoURL) {
+              // 如果没有缓存但有URL，尝试下载并缓存
+              fetchAndCacheAvatar(userData.photoURL).then(base64Data => {
+                if (base64Data) {
+                  userData.photoURL = base64Data;
+                  setUser({...userData});
+                }
+              }).catch(err => console.error('缓存头像失败:', err));
+            }
+            
+            // 更新认证数据 - 这会刷新时间戳
+            db.saveAuthToken(authData.token, userData);
+            
+            setUser(userData);
+            setIsAuthenticated(true);
+          } catch (apiError) {
+            console.error('API验证失败:', apiError);
+            
+            // 如果API验证失败，尝试使用存储的用户数据
+            if (authData.userData) {
+              setUser(authData.userData);
+              setIsAuthenticated(true);
+              console.log('使用缓存的用户数据，API连接失败');
+            } else {
+              // 如果没有用户数据，清除认证信息
+              await db.clearAuth();
+              setUser(null);
+              setIsAuthenticated(false);
+            }
           }
-          
-          setUser(userData);
-          setIsAuthenticated(true);
+        } else {
+          // 兼容旧版本 - 从 localStorage 获取 token （迁移过渡用）
+          const legacyToken = localStorage.getItem('auth_token');
+          if (legacyToken) {
+            console.log('从 localStorage 迁移数据到 Dexie');
+            axios.defaults.headers.common['Authorization'] = `Bearer ${legacyToken}`;
+            try {
+              const response = await axios.get('/api/auth/verify');
+              if (response.data.user) {
+                // 将数据存入 Dexie
+                await db.saveAuthToken(legacyToken, response.data.user);
+                setUser(response.data.user);
+                setIsAuthenticated(true);
+                // 迁移完成后删除旧存储
+                localStorage.removeItem('auth_token');
+              }
+            } catch (legacyError) {
+              console.error('验证旧令牌失败:', legacyError);
+              localStorage.removeItem('auth_token');
+            }
+          }
         }
       } catch (error) {
-        // Token验证失败，清除本地存储
-        console.error('验证失败:', error);
-        localStorage.removeItem('auth_token');
+        // 数据库错误或其他异常
+        console.error('认证检查错误:', error);
+        await db.clearAuth();
+        localStorage.removeItem('auth_token'); // 清除旧存储
         setUser(null);
         setIsAuthenticated(false);
       } finally {
@@ -116,8 +163,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const response = await axios.post('/api/auth/google', { idToken });
       const { token, user } = response.data;
       
-      // 存储token和设置用户信息
-      localStorage.setItem('auth_token', token);
+      // 将认证信息存入Dexie数据库
+      await db.saveAuthToken(token, user);
+      
+      // 设置axios认证头
       axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
       
       // 缓存用户头像 - 下载并转换为Base64
@@ -132,6 +181,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }).catch(err => console.error('缓存头像失败:', err));
       }
       
+      // 处理旧版本兼容性 - 删除localStorage中的数据
+      localStorage.removeItem('auth_token');
+      
       setUser(user);
       setIsAuthenticated(true);
     } catch (error) {
@@ -141,15 +193,28 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   // 登出函数
-  const logout = () => {
-    // 清除本地存储和状态
-    localStorage.removeItem('auth_token');
-    // 不删除头像缓存，保留以便下次登录时使用
-    // localStorage.removeItem(AVATAR_CACHE_KEY);
-    delete axios.defaults.headers.common['Authorization'];
-    
-    setUser(null);
-    setIsAuthenticated(false);
+  const logout = async () => {
+    try {
+      // 清除Dexie数据库中的认证数据
+      await db.clearAuth();
+      
+      // 用于兼容旧版本
+      localStorage.removeItem('auth_token');
+      
+      // 头像数据保留，方便下次登录
+      // 不需要特意清除，因为头像数据缓存会被覆盖
+      
+      // 清除认证头
+      delete axios.defaults.headers.common['Authorization'];
+      
+      setUser(null);
+      setIsAuthenticated(false);
+    } catch (error) {
+      console.error('登出操作错误:', error);
+      // 即使出错也要确保前端状态已清除
+      setUser(null);
+      setIsAuthenticated(false);
+    }
   };
 
   const value = {
