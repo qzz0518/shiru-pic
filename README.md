@@ -139,7 +139,9 @@ shiru-pic/
 │   │   ├── components/ # 组件
 │   │   ├── pages/      # 页面
 │   │   ├── services/   # API服务
-│   │   └── contexts/   # 上下文
+│   │   ├── contexts/   # 上下文
+│   │   ├── hooks/      # 自定义钩子
+│   │   └── utils/      # 工具函数和数据库
 │   ├── public/         # 静态资源
 │   └── ...            # 其他配置文件
 ├── backend/            # 后端Flask应用
