@@ -135,7 +135,7 @@ doc
 backend/.env
 backend/firebase-key.json
 backend/venv
-ackend/__pycache__/
+backend/__pycache__/
 backend/**/__pycache__/
 
 frontend/.env
