@@ -183,7 +183,7 @@ def analyze_image(user):
     
     # 检查文件类型
     if file and allowed_file(file.filename):
-        original_filename = secure_filename(file.filename)
+        original_filename = secure_filename(file.filename).lower()
         
         try:
             # 读取文件内容

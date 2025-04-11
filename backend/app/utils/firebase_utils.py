@@ -169,6 +169,8 @@ def upload_image(file_data, filename):
         content_type = 'image/png'
     elif filename.lower().endswith('.gif'):
         content_type = 'image/gif'
+    elif filename.lower().endswith('.webp'):
+        content_type = 'image/webp'
     
     # 上传文件
     blob.upload_from_string(file_data, content_type=content_type)
