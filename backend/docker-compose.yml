@@ -1,0 +1,21 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: shirupic-backend
+    ports:
+      - "5001:5001"
+    volumes:
+      - ./app:/app/app
+    environment:
+      - FLASK_ENV=production
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5001/api/ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s

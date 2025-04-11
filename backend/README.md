@@ -68,6 +68,50 @@ python run.py
 
 服务器将在`http://0.0.0.0:5001`上启动，可以通过访问`http://localhost:5001`进行测试。
 
+### Docker部署
+
+项目包含 Docker 配置文件，可以使用 Docker 进行快速部署。
+
+#### 前提条件
+
+- 安装 [Docker](https://docs.docker.com/get-docker/) 和 [Docker Compose](https://docs.docker.com/compose/install/)
+- 准备好 Firebase 密钥文件(`firebase-key.json`)和环境变量文件(`.env`)
+
+#### 构建和启动
+
+1. 在后端项目根目录下执行：
+   ```bash
+   docker-compose up -d
+   ```
+   该命令会构建项目镜像并在后台启动容器。
+
+2. 查看容器日志：
+   ```bash
+   docker-compose logs -f
+   ```
+
+3. 停止容器：
+   ```bash
+   docker-compose down
+   ```
+
+4. 重新构建和启动（当代码有变更时）：
+   ```bash
+   docker-compose up -d --build
+   ```
+
+#### Docker文件说明
+
+- `Dockerfile`：定义了项目的构建步骤，包括使用Python 3.11基础镜像、安装依赖和设置运行环境。
+
+- `docker-compose.yml`：配置了容器的运行环境，包括端口映射、挂载目录和环境变量等。
+
+#### 注意事项
+
+- 使用Docker部署时，确保`firebase-key.json`和`.env`文件已经正确配置。
+- 容器会将API服务暴露在宿主机的5001端口。
+- 如果需要更改端口或其他配置，请修改`docker-compose.yml`文件。
+
 ## 环境变量配置
 
 在`.env`文件中设置以下环境变量：
