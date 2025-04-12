@@ -378,11 +378,6 @@ const LandingPage: React.FC<LandingPageProps> = ({ installPrompt: initialInstall
   const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
   const isStandalone = window.matchMedia('(display-mode: standalone)').matches;
   
-  // 判断是否已经安装为PWA
-  const isPWAInstalled = isStandalone || 
-                         navigator.standalone || 
-                         document.referrer.includes('android-app://');
-  
   // 获取安装指南文本
   const getInstallInstructions = () => {
     if (isIOS && isSafari) {
