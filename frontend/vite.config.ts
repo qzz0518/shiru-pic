@@ -39,7 +39,7 @@ export default defineConfig({
     })
   ],
   build: {
-    minify: 'esbuild',
+    minify: 'terser',
     sourcemap: false,
     rollupOptions: {
       output: {
