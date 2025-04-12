@@ -4,19 +4,22 @@ import Dexie from 'dexie';
 export class ShiruPicDB extends Dexie {
   authData: Dexie.Table<IAuthData, string>;
   avatarCache: Dexie.Table<IAvatarCache, string>;
+  imageCache: Dexie.Table<IImageCache, string>;
   
   constructor() {
     super('ShiruPicDatabase');
     
     // 定义数据库架构
-    this.version(1).stores({
+    this.version(2).stores({
       authData: 'id,token,timestamp',
-      avatarCache: 'id,data,timestamp'
+      avatarCache: 'id,data,timestamp',
+      imageCache: 'url,data,timestamp'
     });
     
     // 定义类型
     this.authData = this.table('authData');
     this.avatarCache = this.table('avatarCache');
+    this.imageCache = this.table('imageCache');
   }
   
   // 保存认证Token
@@ -117,6 +120,40 @@ export interface IAvatarCache {
   id: string;
   data: string;
   timestamp: number;
+}
+
+export interface IImageCache {
+  url: string;       // 图片URL作为主键
+  data: string;      // base64格式的图片数据
+  timestamp: number;  // 缓存时间戳
+}
+
+// 缓存图片
+export async function cacheImage(url: string, base64Data: string): Promise<void> {
+  try {
+    await db.imageCache.put({
+      url,
+      data: base64Data,
+      timestamp: Date.now()
+    });
+    console.log('图片已缓存:', url);
+  } catch (error) {
+    console.error('缓存图片错误:', error);
+  }
+}
+
+// 获取缓存图片
+export async function getCachedImage(url: string): Promise<string | null> {
+  try {
+    const cachedImage = await db.imageCache.get(url);
+    if (cachedImage) {
+      return cachedImage.data;
+    }
+    return null;
+  } catch (error) {
+    console.error('获取缓存图片错误:', error);
+    return null;
+  }
 }
 
 // 创建单例数据库实例

@@ -194,6 +194,7 @@ interface Word {
 
 interface AnalysisResult {
   imageUrl: string;
+  cachedImageData?: string; // 添加缓存的图片数据字段
   historyId?: string;
   words: Word[];
   sentence: string;
@@ -253,6 +254,8 @@ const HomePage: React.FC = () => {
         // 适配数据格式，确保字段名一致
         const adaptedItem = {
           imageUrl: historyItem.image_url || historyItem.imageUrl,
+          // 添加缓存的图片数据，如果存在
+          cachedImageData: historyItem.cachedImageData,
           historyId: historyItem.id,
           sentence: historyItem.sentence_japanese || historyItem.sentence,
           sentence_japanese: historyItem.sentence_japanese || historyItem.sentence,
@@ -558,7 +561,7 @@ const HomePage: React.FC = () => {
             variants={fadeInUp}
           >
             <StyledImage 
-              src={analysisResult.imageUrl} 
+              src={analysisResult.cachedImageData || analysisResult.imageUrl} 
               alt="Analyzed" 
               initial={{ scale: 0.95, opacity: 0.8 }}
               animate={{ scale: 1, opacity: 1 }}

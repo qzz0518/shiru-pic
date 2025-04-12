@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   Image, 
   Typography, 
@@ -18,8 +18,9 @@ import {
 import { useNavigate } from 'react-router-dom';
 import styled from 'styled-components';
 import { motion } from 'framer-motion';
-// 导入API服务
+// 导入API服务和数据库工具
 import { historyAPI } from '../services/api';
+import { cacheImage, getCachedImage } from '../utils/db';
 
 const { Text, Paragraph } = Typography;
 
@@ -74,6 +75,35 @@ const StyledImage = styled(Image)`
   border-radius: 12px 12px 0 0;
 `;
 
+// 将图片URL转换为base64
+const convertImageToBase64 = (url: string): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    const img = document.createElement('img');
+    img.crossOrigin = 'Anonymous'; // 解决跨域问题
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = img.width;
+      canvas.height = img.height;
+      
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        reject(new Error('无法创建Canvas上下文'));
+        return;
+      }
+      
+      ctx.drawImage(img, 0, 0);
+      const dataURL = canvas.toDataURL('image/jpeg');
+      resolve(dataURL);
+    };
+    
+    img.onerror = () => {
+      reject(new Error('图片加载失败: ' + url));
+    };
+    
+    img.src = url;
+  });
+};
+
 const WordCountBadge = styled.div`
   position: absolute;
   top: 8px;
@@ -111,6 +141,7 @@ const HistoryPage: React.FC = () => {
   const navigate = useNavigate();
   const [historyItems, setHistoryItems] = useState<HistoryItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const cachedUrls = useRef<Map<string, string>>(new Map()); // 存储URL到缓存图片的映射
 
   // 获取历史记录
   const fetchHistory = async () => {
@@ -126,6 +157,18 @@ const HistoryPage: React.FC = () => {
         createdAt: item.created_at || item.createdAt,
         wordCount: item.word_count || item.wordCount || 0
       }));
+      
+      // 检查每个图片是否有缓存
+      for (const item of adaptedItems) {
+        if (item.imageUrl) {
+          const cachedData = await getCachedImage(item.imageUrl);
+          if (cachedData) {
+            cachedUrls.current.set(item.imageUrl, cachedData);
+            console.log('使用缓存图片:', item.imageUrl);
+          }
+        }
+      }
+      
       setHistoryItems(adaptedItems);
     } catch (error) {
       console.error('获取历史记录失败:', error);
@@ -157,10 +200,21 @@ const HistoryPage: React.FC = () => {
       setLoading(true);
       // 获取详细历史记录
       const response = await historyAPI.getHistoryItem(item.id);
+      const detailData = response.data;
+      
+      // 检查是否有缓存的图片
+      const imageUrl = detailData.image_url || detailData.imageUrl;
+      if (imageUrl && cachedUrls.current.has(imageUrl)) {
+        // 如果有缓存图片，使用缓存的base64数据
+        console.log('详情页使用缓存图片:', imageUrl);
+        // 添加缓存的图片数据到详情数据中
+        detailData.cachedImageData = cachedUrls.current.get(imageUrl);
+      }
+      
       // 导航到首页并携带历史数据
       navigate('/app', { 
         state: { 
-          historyItem: response.data,
+          historyItem: detailData,
           from: 'history'
         } 
       });
@@ -228,9 +282,23 @@ const HistoryPage: React.FC = () => {
             >
               <ImageCard onClick={() => handleViewDetails(item)}>
                   <StyledImage
-                    src={item.imageUrl}
+                    src={cachedUrls.current.get(item.imageUrl) || item.imageUrl}
                     alt="历史图片"
                     preview={false}
+                    onLoad={() => {
+                      // 如果这个图片URL还没有缓存，就缓存它
+                      if (item.imageUrl && !cachedUrls.current.has(item.imageUrl)) {
+                        // 使用URL转换为base64
+                        convertImageToBase64(item.imageUrl)
+                          .then(base64Data => {
+                            // 存入缓存
+                            cacheImage(item.imageUrl, base64Data);
+                            // 更新当前的缓存映射
+                            cachedUrls.current.set(item.imageUrl, base64Data);
+                          })
+                          .catch(err => console.error('缓存图片失败:', err));
+                      }
+                    }}
                   />
                   
                   <WordCountBadge>
