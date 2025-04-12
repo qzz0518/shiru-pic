@@ -1,11 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Button, 
   Typography, 
   Space, 
   Divider, 
   Card, 
-  message, 
   Spin 
 } from 'antd';
 import { GoogleOutlined } from '@ant-design/icons';
@@ -14,6 +13,8 @@ import styled from 'styled-components';
 import { motion } from 'framer-motion';
 import { useAuth } from '../contexts/AuthContext';
 import { signInWithGoogle } from '../firebase';
+import db from '../utils/db';
+import toast from '../utils/toast';
 
 declare global {
   interface Window {
@@ -199,8 +200,42 @@ interface LandingPageProps {
 
 const LandingPage: React.FC<LandingPageProps> = ({ installPrompt }) => {
   const navigate = useNavigate();
-  const { login } = useAuth();
+  const { login, isAuthenticated } = useAuth();
   const [loading, setLoading] = useState(false);
+  const [autoLoginAttempted, setAutoLoginAttempted] = useState(false);
+  
+  // 自动登录 - 检查IndexedDB中是否有认证数据
+  useEffect(() => {
+    // 避免已经登录的情况下或者已经尝试过自动登录的情况下重复执行
+    if (isAuthenticated || autoLoginAttempted) {
+      return;
+    }
+    
+    const attemptAutoLogin = async () => {
+      try {
+        // 检查数据库中是否有登录信息
+        const authData = await db.getAuthToken();
+        
+        if (authData && authData.token) {
+          console.log('发现保存的认证数据，正在尝试自动登录...');
+          setLoading(true);
+          setTimeout(() => {
+            navigate('/app');
+            setLoading(false);
+          }, 100); // 添加短暂延迟，提供更好的视觉反馈
+        }
+      } catch (error) {
+        console.error('自动登录失败:', error);
+        // 失败不显示错误，静默失败
+      } finally {
+        // 标记已尝试自动登录
+        setAutoLoginAttempted(true);
+      }
+    };
+    
+    // 执行自动登录
+    attemptAutoLogin();
+  }, [navigate, isAuthenticated, autoLoginAttempted]);
 
   // 处理Google登录
   const handleGoogleLogin = async () => {
@@ -218,16 +253,16 @@ const LandingPage: React.FC<LandingPageProps> = ({ installPrompt }) => {
       try {
         await login(idToken); // 这个函数已经包含了API调用
         navigate('/app');
-        message.success('登录成功！');
+        toast.success('登录成功！');
       } catch (error: any) {
         console.error('登录失败:', error);
-        message.error(`登录失败: ${error.response?.data?.error || '请重试'}`);
+        toast.error(`登录失败: ${error.response?.data?.error || '请重试'}`);
       } finally {
         setLoading(false);
       }
     } catch (error) {
       console.error('Google登录错误:', error);
-      message.error('登录失败，请重试');
+      toast.error('登录失败，请重试');
       setLoading(false);
     }
   };
@@ -282,7 +317,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ installPrompt }) => {
       installPrompt.prompt();
       installPrompt.userChoice.then((choiceResult: any) => {
         if (choiceResult.outcome === 'accepted') {
-          message.success('感谢安装我们的应用！');
+          toast.success('感谢安装我们的应用！');
         }
       });
     }
