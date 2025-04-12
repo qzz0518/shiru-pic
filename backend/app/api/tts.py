@@ -34,6 +34,7 @@ def text_to_speech(user):
         
         # 调用OpenAI TTS API生成语音
         response = openai.audio.speech.create(
+            instructions="你是一名日语老师，请用日语读出以下文本:",
             model="gpt-4o-mini-tts",
             voice="alloy",
             input=text,
