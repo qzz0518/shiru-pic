@@ -7,7 +7,7 @@ import {
   Card, 
   Spin 
 } from 'antd';
-import { GoogleOutlined } from '@ant-design/icons';
+import { GoogleOutlined, AppstoreAddOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import styled from 'styled-components';
 import { motion } from 'framer-motion';
@@ -19,6 +19,11 @@ import toast from '../utils/toast';
 declare global {
   interface Window {
     google: any;
+    MSStream?: any; // IE浏览器检测用
+  }
+  
+  interface Navigator {
+    standalone?: boolean; // iOS Safari检测用
   }
 }
 
@@ -198,11 +203,58 @@ interface LandingPageProps {
   installPrompt: any;
 }
 
-const LandingPage: React.FC<LandingPageProps> = ({ installPrompt }) => {
+// 定义beforeinstallprompt事件类型
+interface BeforeInstallPromptEvent extends Event {
+  readonly platforms: string[];
+  readonly userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>;
+  prompt(): Promise<void>;
+}
+
+const LandingPage: React.FC<LandingPageProps> = ({ installPrompt: initialInstallPrompt }) => {
   const navigate = useNavigate();
   const { login, isAuthenticated } = useAuth();
   const [loading, setLoading] = useState(false);
   const [autoLoginAttempted, setAutoLoginAttempted] = useState(false);
+  const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(initialInstallPrompt || null);
+  const [isInstallable, setIsInstallable] = useState(!!initialInstallPrompt);
+  const [isInstalled, setIsInstalled] = useState(false);
+  
+  // 监听 beforeinstallprompt 事件
+  useEffect(() => {
+    const handleBeforeInstallPrompt = (e: Event) => {
+      // 防止移动设备上显示迷你信息栏
+      e.preventDefault();
+      // 保存事件，以便稍后触发
+      const promptEvent = e as BeforeInstallPromptEvent;
+      setDeferredPrompt(promptEvent);
+      setIsInstallable(true);
+      
+      console.log('应用可安装，触发 beforeinstallprompt 事件');
+    };
+    
+    // 实用标准
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    
+    // 检测应用是否已经安装
+    const handleAppInstalled = () => {
+      // 隐藏安装按钮
+      setIsInstalled(true);
+      setIsInstallable(false);
+      // 清除deferredPrompt，以便进行垃圾回收
+      setDeferredPrompt(null);
+      
+      console.log('PWA已成功安装！');
+      toast.success('应用已成功安装到您的设备！');
+    };
+    
+    window.addEventListener('appinstalled', handleAppInstalled);
+    
+    // 清除事件监听器
+    return () => {
+      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt as any);
+      window.removeEventListener('appinstalled', handleAppInstalled);
+    };
+  }, []);
   
   // 自动登录 - 检查IndexedDB中是否有认证数据
   useEffect(() => {
@@ -293,17 +345,26 @@ const LandingPage: React.FC<LandingPageProps> = ({ installPrompt }) => {
           </Button>
         </motion.div>
         
-        {installPrompt && (
+        {/* 添加到主屏幕按钮 - 当应用可安装且未安装时显示 */}
+        {!isInstalled && (isInstallable || !isStandalone) && (
           <motion.div
             whileHover={{ scale: 1.02 }}
             whileTap={{ scale: 0.98 }}
             style={{ width: '100%' }}
           >
             <Button 
-              style={{ marginTop: 16, background: 'rgba(255,255,255,0.9)' }}
+              style={{ 
+                marginTop: 16, 
+                background: 'rgba(255,255,255,0.9)',
+                color: '#4e7dd1',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}
+              icon={<AppstoreAddOutlined style={{ fontSize: '16px' }} />}
               onClick={handleInstallClick}
             >
-              安装应用到主屏幕
+              添加到主屏幕
             </Button>
           </motion.div>
         )}
@@ -311,14 +372,58 @@ const LandingPage: React.FC<LandingPageProps> = ({ installPrompt }) => {
     );
   };
 
-  // 处理PWA安装
-  const handleInstallClick = () => {
-    if (installPrompt) {
-      installPrompt.prompt();
-      installPrompt.userChoice.then((choiceResult: any) => {
-        if (choiceResult.outcome === 'accepted') {
+  // 判断设备类型和浏览器
+  // 使用类型断言避免TypeScript错误
+  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !(window as any).MSStream;
+  const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+  const isStandalone = window.matchMedia('(display-mode: standalone)').matches;
+  
+  // 判断是否已经安装为PWA
+  const isPWAInstalled = isStandalone || 
+                         navigator.standalone || 
+                         document.referrer.includes('android-app://');
+  
+  // 获取安装指南文本
+  const getInstallInstructions = () => {
+    if (isIOS && isSafari) {
+      return '点击 Safari 底部的分享按钮，然后选择“添加到主屏幕”';
+    } else if (/Android/.test(navigator.userAgent)) {
+      return '打开菜单，然后点击“添加到主屏幕”';
+    } else {
+      return '点击浏览器地址栏中的安装图标';
+    }
+  };
+  
+  // 处理PWA安装 - 遵循 web.dev 最佳实践
+  const handleInstallClick = async () => {
+    // 如果有deferredPrompt，则使用原生安装提示
+    if (deferredPrompt) {
+      try {
+        // 显示安装提示
+        deferredPrompt.prompt();
+        // 等待用户响应
+        const { outcome } = await deferredPrompt.userChoice;
+        
+        // 记录用户选择
+        if (outcome === 'accepted') {
           toast.success('感谢安装我们的应用！');
+          console.log('用户接受了安装');
+          setIsInstalled(true);
+        } else {
+          console.log('用户拒绝了安装');
         }
+        
+        // 使用后无法再次使用提示，需要丢弃它
+        setDeferredPrompt(null);
+      } catch (error) {
+        console.error('安装提示错误:', error);
+        toast.error('安装过程中出现错误');
+      }
+    } else {
+      // 如果没有deferredPrompt，则显示适用于当前设备的安装指南
+      toast.info(getInstallInstructions(), {
+        duration: 5000,
+        icon: 'ℹ️'
       });
     }
   };
