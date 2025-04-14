@@ -185,7 +185,7 @@ export const aiAPI = {
   // 使用4o-mini模型进行日中互译
   translateJapaneseChinese: (word: string) => {
     return api.post('/api/ai/translate', {
-      model: 'gpt-4o-mini',
+      model: 'gpt-4.1-mini',
       query: word,
       system_prompt: '你是一个专业的日中互译助手。请提供以下日语单词的详细信息，包括原始单词、假名(如果有)、中文意思和例句。请用JSON格式返回，格式为：{"word": "单词", "kana": "假名", "meaning": "中文意思", "example": "例句", "exampleMeaning": "例句翻译"}'
     });

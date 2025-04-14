@@ -61,7 +61,7 @@ def analyze_image_with_openai(image_url_or_path, api_key, is_url=False, image_da
         
         # 调用OpenAI视觉API分析图片
         response = client.responses.create(
-            model="gpt-4o-mini",
+            model="gpt-4.1-mini",
             input=[
                 {
                     "role": "user",

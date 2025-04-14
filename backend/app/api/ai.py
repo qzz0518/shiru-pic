@@ -22,7 +22,7 @@ def translate():
         if not data:
             return jsonify({'error': '请求数据为空'}), 400
         
-        requested_model = data.get('model', 'gpt-4o-mini')
+        requested_model = data.get('model', 'gpt-4.1-mini')
         query = data.get('query')
         system_prompt = data.get('system_prompt', '你是一个专业的日中互译助手。请提供以下日语单词的详细信息，包括原始单词、假名(如果有)、中文意思和例句。请用JSON格式返回，格式为：{"word": "单词", "kana": "假名", "meaning": "中文意思", "example": "例句", "exampleMeaning": "例句翻译"}')
         

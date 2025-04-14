@@ -56,7 +56,7 @@ ShiruPic是一款基于图像识别的日语学习应用，通过拍照或上传
   - Storage: 图片存储
   - Authentication: 用户认证
 - **OpenAI**: AI图像分析和文本处理
-  - GPT-4o-mini: 图像分析和文本生成
+  - GPT-4.1-mini: 图像分析和文本生成
   - TTS: 语音合成
 - **Python 3.8+**: 编程语言
 
