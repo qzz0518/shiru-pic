@@ -24,6 +24,7 @@ import { motion } from 'framer-motion';
 import styled from 'styled-components';
 import { useAuth } from '../contexts/AuthContext';
 import toast from '../utils/toast';
+import { useNetworkStore } from '../utils/network';
 
 const { Title, Text } = Typography;
 
@@ -145,8 +146,17 @@ const SettingsPage: React.FC = () => {
     }
   };
 
+  // 获取当前网络状态
+  const isOnline = useNetworkStore(state => state.isOnline);
+
   // 应用设置数据
   const appSettings = [
+    {
+      title: '网络状态',
+      description: '当前' + (isOnline ? '已连接网络，可使用全部功能' : '无网络连接，仅可使用缓存内容'),
+      icon: isOnline ? <CheckCircleOutlined style={{ color: '#52c41a' }} /> : <InfoCircleOutlined style={{ color: '#faad14' }} />,
+      action: <Badge status={isOnline ? 'success' : 'warning'} text={isOnline ? '在线模式' : '离线模式'} />
+    },
     {
       title: '启用推送通知',
       description: '接收学习提醒和新功能通知',

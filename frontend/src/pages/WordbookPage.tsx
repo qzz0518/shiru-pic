@@ -31,6 +31,8 @@ import styled from 'styled-components';
 import { motion, AnimatePresence } from 'framer-motion';
 // 导入API服务
 import { wordbookAPI, ttsAPI, aiAPI } from '../services/api';
+import { getLocalWords, saveWordToLocal, deleteLocalWord } from '../utils/db';
+import { isOnline } from '../utils/network';
 
 const { Text, Paragraph } = Typography;
 const { Search } = Input;
@@ -189,12 +191,13 @@ const StyledSearchInput = styled(Search)`
 `;
 
 
+// 修改接口使其与数据库接口兼容
 interface Word {
   id: string;
   word: string;
   kana: string;
   meaning: string;
-  createdAt: string;
+  timestamp: number; // 创建时间戳是必需的，用于排序和过滤
 }
 
 interface TranslateResult {
@@ -210,6 +213,8 @@ const WordbookPage: React.FC = () => {
   const [filteredWords, setFilteredWords] = useState<Word[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchText, setSearchText] = useState('');
+  // 添加新状态来跟踪是否只显示今日新增单词
+  const [showTodayOnly, setShowTodayOnly] = useState(false);
   const [editModalVisible, setEditModalVisible] = useState(false);
   const [addModalVisible, setAddModalVisible] = useState(false);
   const [currentWord, setCurrentWord] = useState<Word | null>(null);
@@ -221,12 +226,84 @@ const WordbookPage: React.FC = () => {
   const fetchWords = async () => {
     setLoading(true);
     try {
-      const response = await wordbookAPI.getWords();
-      setWords(response.data);
-      setFilteredWords(response.data);
+      // 检查网络状态
+      const networkOffline = !isOnline();
+      
+      if (networkOffline) {
+        // 离线模式：从本地数据库获取单词
+        const localWords = await getLocalWords();
+        // 确保按时间戳倒序排列（最新的在前面）
+        const sortedWords = [...localWords].sort((a, b) => {
+          const timeA = a.timestamp || 0;
+          const timeB = b.timestamp || 0;
+          return timeB - timeA;
+        });
+        setWords(sortedWords);
+        setFilteredWords(sortedWords);
+        console.log('离线模式：已加载本地单词数据', sortedWords.length);
+      } else {
+        // 在线模式：从服务器获取单词
+        const response = await wordbookAPI.getWords();
+        
+        // 将服务器返回的createdAt转换为时间戳
+        const dataWithTimestamp = response.data.map((word: any) => {
+          // 如果有createdAt，则将其转换为时间戳
+          let timestamp;
+          if (word.createdAt) {
+            // 将ISO格式字符串转换为时间戳
+            timestamp = new Date(word.createdAt).getTime();
+          } else {
+            timestamp = Date.now(); // 如果没有createdAt，使用当前时间
+          }
+          
+          return {
+            ...word,
+            timestamp: timestamp
+          };
+        });
+        
+        setWords(dataWithTimestamp);
+        setFilteredWords(dataWithTimestamp);
+        
+        // 同时将在线数据保存到本地数据库，以便离线使用
+        try {
+          // 首先获取本地单词库以检查现有数据
+          const localWords = await getLocalWords();
+          const localWordsMap = new Map();
+          localWords.forEach(word => localWordsMap.set(word.id, word));
+          
+          for (const word of response.data) {
+            // 使用服务器返回的createdAt时间戳
+            const timestamp = word.createdAt ? new Date(word.createdAt).getTime() : Date.now();
+            
+            // 如果在本地有这个单词，使用本地时间戳；否则使用服务器时间戳
+            const localWord = localWordsMap.get(word.id);
+            const wordToSave = {
+              ...word,
+              timestamp: localWord ? localWord.timestamp : timestamp
+            };
+            await saveWordToLocal(wordToSave);
+          }
+          console.log('单词数据已同步到本地数据库');
+        } catch (e) {
+          console.error('同步单词到本地数据库失败:', e);
+        }
+      }
     } catch (error) {
       console.error('获取单词列表失败:', error);
       message.error('获取单词列表失败');
+      
+      // 尝试从本地加载作为备份方案
+      try {
+        const localWords = await getLocalWords();
+        if (localWords.length > 0) {
+          setWords(localWords);
+          setFilteredWords(localWords);
+          message.info('已从本地数据加载单词');
+        }
+      } catch (e) {
+        console.error('从本地数据库加载单词失败:', e);
+      }
     } finally {
       setLoading(false);
     }
@@ -236,29 +313,75 @@ const WordbookPage: React.FC = () => {
     fetchWords();
   }, []);
 
+  // 获取今天的开始时间戳（当天0点）
+  const getTodayStartTimestamp = () => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    return today.getTime();
+  };
+
+  // 过滤单词函数，同时考虑搜索文本和今日新增过滤
+  const filterWords = (words: Word[], searchValue: string, todayOnly: boolean) => {
+    let filtered = [...words];
+    
+    // 如果需要只显示今日新增
+    if (todayOnly) {
+      const todayStart = getTodayStartTimestamp();
+      filtered = filtered.filter(word => {
+        // 使用 timestamp 判断是否为今日新增
+        return word.timestamp >= todayStart;
+      });
+    }
+    
+    // 如果还有搜索文本，进一步过滤
+    if (searchValue) {
+      filtered = filtered.filter(
+        word => 
+          word.word.toLowerCase().includes(searchValue.toLowerCase()) || 
+          word.kana.toLowerCase().includes(searchValue.toLowerCase()) || 
+          word.meaning.toLowerCase().includes(searchValue.toLowerCase())
+      );
+    }
+    
+    return filtered;
+  };
+
   // 搜索单词
   const handleSearch = (value: string) => {
     setSearchText(value);
-    if (!value) {
-      setFilteredWords(words);
-      return;
-    }
-    
-    const filtered = words.filter(
-      word => 
-        word.word.toLowerCase().includes(value.toLowerCase()) || 
-        word.kana.toLowerCase().includes(value.toLowerCase()) || 
-        word.meaning.toLowerCase().includes(value.toLowerCase())
-    );
-    setFilteredWords(filtered);
+    setFilteredWords(filterWords(words, value, showTodayOnly));
+  };
+  
+  // 切换今日新增过滤
+  const toggleTodayOnly = () => {
+    const newState = !showTodayOnly;
+    setShowTodayOnly(newState);
+    setFilteredWords(filterWords(words, searchText, newState));
   };
 
   // 删除单词
   const handleDelete = async (id: string) => {
     try {
-      await wordbookAPI.deleteWord(id);
-      message.success('单词已删除');
-      fetchWords();
+      // 检查网络状态
+      const networkOffline = !isOnline();
+      
+      if (networkOffline) {
+        // 离线模式：仅从本地数据库删除
+        await deleteLocalWord(id);
+        message.success('单词已从本地移除');
+        fetchWords();
+      } else {
+        // 在线模式：从服务器和本地都删除
+        await wordbookAPI.deleteWord(id);
+        // 同时从本地数据库删除
+        try {
+          await deleteLocalWord(id);
+        } catch (e) {
+          console.error('从本地数据库删除单词失败:', e);
+        }
+        message.success('单词已删除');
+        fetchWords();
+      }
     } catch (error) {
       console.error('删除单词失败:', error);
       message.error('删除单词失败');
@@ -417,8 +540,29 @@ const WordbookPage: React.FC = () => {
         <Card>
           <Statistic title="已学单词" value={words.length} />
         </Card>
-        <Card>
-          <Statistic title="今日新增" value={words.filter(w => new Date(w.createdAt).toDateString() === new Date().toDateString()).length} prefix={<CalendarOutlined />} />
+        <Card 
+          onClick={toggleTodayOnly}
+          style={{
+            cursor: 'pointer',
+            border: showTodayOnly ? '2px solid #4e7dd1' : 'none',
+            backgroundColor: showTodayOnly ? '#f0f4ff' : 'white'
+          }}
+          hoverable
+        >
+          <Statistic 
+            title={<span style={showTodayOnly ? {color: '#4e7dd1', fontWeight: 'bold'} : {}}>今日新增</span>} 
+            value={words.filter(w => {
+              // 使用时间戳判断是否为今日新增
+              const today = new Date();
+              today.setHours(0, 0, 0, 0);
+              return w.timestamp >= today.getTime();
+            }).length} 
+            prefix={<CalendarOutlined style={showTodayOnly ? {color: '#4e7dd1'} : {}} />} 
+            valueStyle={showTodayOnly ? {color: '#4e7dd1'} : {}}
+          />
+          {showTodayOnly && <div style={{position: 'absolute', top: '8px', right: '8px'}}>
+            <Tag color="#4e7dd1">已筛选</Tag>
+          </div>}
         </Card>
       </StatsContainer>
       
@@ -451,7 +595,7 @@ const WordbookPage: React.FC = () => {
           >
             <AnimatePresence>
               <List
-                dataSource={filteredWords}
+                dataSource={[...filteredWords]} // 使用数组拷贝确保不会改变原始数组
                 renderItem={(word, index) => (
                   <StyledCard 
                     key={word.id}
@@ -554,7 +698,7 @@ const WordbookPage: React.FC = () => {
                             color: '#999'
                           }}>
                             <CalendarOutlined style={{ marginRight: 3 }} />
-                            {new Date(word.createdAt).toLocaleDateString()}
+                            {word.timestamp ? new Date(word.timestamp).toLocaleDateString() : '无日期'}
                           </Text>
                           
                           {/* 编辑和删除按钮放在右侧 */}

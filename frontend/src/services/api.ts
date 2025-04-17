@@ -1,5 +1,6 @@
 import axios from 'axios';
-import db from '../utils/db';
+import db, { getCachedAudio, cacheAudio } from '../utils/db';
+import { isOnline } from '../utils/network';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5001';
 
@@ -224,9 +225,66 @@ export const imageAPI = {
 
 // TTS API
 export const ttsAPI = {
-  // 获取文字语音
-  speak: (text: string) => {
-    return api.post('/api/tts/speak', { text }, { responseType: 'blob' });
+  // 获取文字语音 - 支持离线缓存
+  speak: async (text: string) => {
+    try {
+      // 检查网络状态
+      const networkOffline = !isOnline();
+      
+      // 查询缓存
+      const cachedAudio = await getCachedAudio(text);
+      
+      // 如果有缓存，直接返回缓存的数据
+      if (cachedAudio) {
+        console.log('使用缓存的语音数据:', text);
+        
+        // 将Base64转回为Blob
+        const byteCharacters = atob(cachedAudio.split(',')[1]);
+        const byteNumbers = new Array(byteCharacters.length);
+        for (let i = 0; i < byteCharacters.length; i++) {
+          byteNumbers[i] = byteCharacters.charCodeAt(i);
+        }
+        const byteArray = new Uint8Array(byteNumbers);
+        const blob = new Blob([byteArray], { type: 'audio/mpeg' });
+        
+        // 构造一个类似响应的对象
+        return Promise.resolve({
+          data: blob,
+          status: 200,
+          statusText: 'OK',
+          headers: {},
+          config: {}
+        });
+      }
+      
+      // 如果没有缓存且网络离线，报错
+      if (networkOffline) {
+        return Promise.reject(new Error('离线模式下无法播放没有缓存的语音'));
+      }
+      
+      // 在线模式，请求服务器并缓存结果
+      const response = await api.post('/api/tts/speak', { text }, { responseType: 'blob' });
+      
+      // 缓存语音数据
+      try {
+        const reader = new FileReader();
+        reader.onloadend = async function() {
+          // 结果是base64数据
+          const base64data = reader.result as string;
+          await cacheAudio(text, base64data);
+        };
+        // 创建一个副本读取
+        const blobCopy = response.data.slice();
+        reader.readAsDataURL(blobCopy);
+      } catch (err) {
+        console.error('缓存语音数据失败:', err);
+      }
+      
+      return response;
+    } catch (error) {
+      console.error('获取或播放语音失败:', error);
+      return Promise.reject(error);
+    }
   },
 };
 

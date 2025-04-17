@@ -4,6 +4,8 @@ import styled from 'styled-components'
 import { ConfigProvider } from 'antd'
 import zhCN from 'antd/lib/locale/zh_CN'
 import { Toaster } from 'react-hot-toast'
+import { showSuccess } from './utils/toast'
+import { initNetworkDetection, useNetworkStore } from './utils/network'
 
 // 导入页面组件
 import { HomePage, WordbookPage, SettingsPage, LandingPage, HistoryPage } from './pages'
@@ -51,8 +53,13 @@ const AppContainer = styled.div`
 function App() {
   // 检查PWA安装状态
   const [installPrompt, setInstallPrompt] = useState<any>(null)
+  // 使用网络状态存储
+  const isOnline = useNetworkStore(state => state.isOnline)
 
   useEffect(() => {
+    // 初始化网络状态检测
+    initNetworkDetection()
+    
     // 监听beforeinstallprompt事件，用于PWA安装
     window.addEventListener('beforeinstallprompt', (e) => {
       e.preventDefault()
@@ -66,6 +73,15 @@ function App() {
       })
     }
   }, [])
+  
+  // 网络状态变化时显示提示
+  useEffect(() => {
+    if (isOnline) {
+      showSuccess('网络已连接，已切换到在线模式')
+    } else {
+      showSuccess('网络断开，已切换到离线模式，部分功能可能受限')
+    }
+  }, [isOnline])
 
   return (
     <ConfigProvider locale={zhCN} theme={theme}>
