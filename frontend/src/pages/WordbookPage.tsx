@@ -33,6 +33,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { wordbookAPI, ttsAPI, aiAPI } from '../services/api';
 import { getLocalWords, saveWordToLocal, deleteLocalWord } from '../utils/db';
 import { isOnline } from '../utils/network';
+import { useWordNotification } from '../hooks/useWordNotification';
 
 const { Text, Paragraph } = Typography;
 const { Search } = Input;
@@ -213,6 +214,8 @@ const WordbookPage: React.FC = () => {
   const [filteredWords, setFilteredWords] = useState<Word[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchText, setSearchText] = useState('');
+  // 使用单词通知钩子，传入单词数量
+  useWordNotification(words.length);
   // 添加新状态来跟踪是否只显示今日新增单词
   const [showTodayOnly, setShowTodayOnly] = useState(false);
   const [editModalVisible, setEditModalVisible] = useState(false);

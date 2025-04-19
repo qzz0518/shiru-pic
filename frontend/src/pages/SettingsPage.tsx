@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   List, 
   Switch, 
@@ -25,6 +25,7 @@ import styled from 'styled-components';
 import { useAuth } from '../contexts/AuthContext';
 import toast from '../utils/toast';
 import { useNetworkStore } from '../utils/network';
+import { requestNotificationPermission } from '../utils/notificationService';
 
 const { Title, Text } = Typography;
 
@@ -112,6 +113,15 @@ const itemVariants = {
 const SettingsPage: React.FC = () => {
   const { user, logout } = useAuth();
   const [loading, setLoading] = useState(false);
+  const [notificationsEnabled, setNotificationsEnabled] = useState(false);
+  
+  // 初始化时从本地存储获取通知设置
+  useEffect(() => {
+    if (user) {
+      const savedSetting = localStorage.getItem(`notifications_enabled_${user.uid}`);
+      setNotificationsEnabled(savedSetting === 'true');
+    }
+  }, [user]);
 
   // 处理登出
   const handleLogout = async () => {
@@ -148,6 +158,27 @@ const SettingsPage: React.FC = () => {
 
   // 获取当前网络状态
   const isOnline = useNetworkStore(state => state.isOnline);
+  
+  // 处理通知开关切换
+  const handleNotificationToggle = async (checked: boolean) => {
+    if (!user) return;
+    
+    // 保存设置到本地存储
+    localStorage.setItem(`notifications_enabled_${user.uid}`, String(checked));
+    setNotificationsEnabled(checked);
+    
+    // 如果开启通知，请求浏览器通知权限
+    if (checked) {
+      const granted = await requestNotificationPermission();
+      if (!granted) {
+        toast.warning('需要允许通知权限才能接收学习提醒');
+      } else {
+        toast.success('已开启学习提醒，每天早上9点将提醒您复习单词');
+      }
+    } else {
+      toast.success('已关闭学习提醒');
+    }
+  };
 
   // 应用设置数据
   const appSettings = [
@@ -161,7 +192,7 @@ const SettingsPage: React.FC = () => {
       title: '启用推送通知',
       description: '接收学习提醒和新功能通知',
       icon: <BellOutlined />,
-      action: <Switch defaultChecked />
+      action: <Switch checked={notificationsEnabled} onChange={handleNotificationToggle} />
     }
   ];
 

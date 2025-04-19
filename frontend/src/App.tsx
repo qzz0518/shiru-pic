@@ -10,6 +10,7 @@ import { initNetworkDetection, useNetworkStore } from './utils/network'
 // 导入页面组件
 import { HomePage, WordbookPage, SettingsPage, LandingPage, HistoryPage } from './pages'
 import { Layout } from './components'
+import NotificationProvider from './components/NotificationProvider'
 
 // 导入上下文
 import { AuthProvider, useAuth } from './contexts'
@@ -86,9 +87,10 @@ function App() {
   return (
     <ConfigProvider locale={zhCN} theme={theme}>
       <AuthProvider>
-        <AppContainer>
-          {/* Toast通知容器 */}
-          <Toaster />
+        <NotificationProvider>
+          <AppContainer>
+            {/* Toast通知容器 */}
+            <Toaster />
           
           <BrowserRouter>
             <Routes>
@@ -108,7 +110,8 @@ function App() {
               </Route>
             </Routes>
           </BrowserRouter>
-        </AppContainer>
+          </AppContainer>
+        </NotificationProvider>
       </AuthProvider>
     </ConfigProvider>
   )
